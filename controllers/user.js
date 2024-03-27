@@ -16,7 +16,15 @@ const transporter = nodemailer.createTransport({
 
 async function sendVerificationEmail(email) {
   const token = jwt.sign({ email }, process.env.SECRET_KEY, { expiresIn: "1d" });
-console.log("email",email)
+
+  // Update the verification_token column in the users table
+  try {
+    await db.query("UPDATE users SET verification_token = ? WHERE email = ?", [token, email]);
+  } catch (error) {
+    console.error("Error updating verification token:", error);
+    throw new Error("Failed to update verification token in the database");
+  }
+
   const info = await transporter.sendMail({
     from: 'Maddison Foo Koch 👻" <humberto.funk64@ethereal.email>',
     to: email,
@@ -27,6 +35,21 @@ console.log("email",email)
 
   console.log("Message sent: %s", info.messageId);
 }
+
+
+// async function sendVerificationEmail(email) {
+//   const token = jwt.sign({ email }, process.env.SECRET_KEY, { expiresIn: "1d" });
+// console.log("email",email)
+//   const info = await transporter.sendMail({
+//     from: 'Maddison Foo Koch 👻" <humberto.funk64@ethereal.email>',
+//     to: email,
+//     subject: "Email Verification",
+//     text: `Click on the following link to verify your email: http://yourdomain.com/verify-email?token=${token}`,
+//     html: `<p>Click on the following link to verify your email: <a href="http://yourdomain.com/verify-email?token=${token}">Verify Email</a></p>`,
+//   });
+
+//   console.log("Message sent: %s", info.messageId);
+// }
 async function createUser(req, res) {
   const { email, password } = req.body;
 
@@ -212,7 +235,90 @@ async function login(req, res) {
     }
 }
 
+async function verifyEmail( req, res) {
+  console.log("runnn 1");
+  try {
+    // Verify the token
+    const {token} = req.query
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    const { email } = decoded;
+
+    // Update the email_verified field in the database
+    await db.query("UPDATE users SET email_verified = true WHERE email = ?", [email]);
+
+    // Redirect the user to a success page or send a success response
+    res.status(200).send('Email verified successfully');
+  } catch (error) {
+    console.error("Error verifying email:", error);
+    // Redirect the user to an error page or send an error response
+    res.status(500).send('Failed to verify email');
+  }
+}
 
 
+async function sendPasswordResetEmail(email, resetToken) {
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.ethereal.email',
+    port: 587,
+    auth: {
+        user: 'humberto.funk64@ethereal.email',
+        pass: 'cS2AUUjX9EhYBs7XgM'
+    }
+  });
 
-module.exports = {createUser,login};
+  const resetLink = `http://yourdomain.com/reset-password?token=${resetToken}`;
+  
+  const info = await transporter.sendMail({
+    from: 'Your Sender Name <your-email@example.com>',
+    to: email,
+    subject: 'Password Reset Request',
+    text: `Click on the following link to reset your password: ${resetLink}`,
+    html: `<p>Click on the following link to reset your password: <a href="${resetLink}">${resetLink}</a></p>`
+  });
+
+  console.log("Password reset email sent: %s", info.messageId);
+}
+ const forgotPassword =async(req, res) => {
+  const { email } = req.body;
+
+  // Check if the user with the given email exists in the database
+  const user = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+
+  if (!user) {
+    return res.status(404).send('User not found');
+  }
+
+  // Generate a unique reset token
+  const resetToken = jwt.sign({ email }, process.env.SECRET_KEY, { expiresIn: '1h' });
+
+  // Store the reset token in the database (you'll need to add a reset_token column)
+  await db.query("UPDATE users SET reset_token = ? WHERE email = ?", [resetToken, email]);
+
+  // Send password reset email
+  await sendPasswordResetEmail(email, resetToken);
+
+  res.status(200).send('Password reset email sent');
+};
+
+async function resetPassword (req, res)  {
+  const { token, newPassword } = req.body;
+
+  try {
+    // Verify the reset token
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    const { email } = decoded;
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // Update the user's password in the database
+    await db.query("UPDATE users SET password = ? WHERE email = ?", [hashedPassword, email]);
+    
+    // Clear the reset token from the database
+    await db.query("UPDATE users SET reset_token = NULL WHERE email = ?", [email]);
+
+    res.status(200).send('Password reset successful');
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    res.status(500).send('Failed to reset password');
+  }
+}
+
+module.exports = {createUser,login,verifyEmail,sendPasswordResetEmail,forgotPassword,resetPassword};

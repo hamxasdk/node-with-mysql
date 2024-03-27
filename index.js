@@ -1,7 +1,9 @@
 const express = require("express");
 const cors = require("cors");
+const jwt = require('jsonwebtoken');
+require("dotenv").config();
 const db = require("./config/db");
-const {createUser,login} = require("./controllers/user");
+const {createUser,login, verifyEmail, forgotPassword, resetPassword} = require("./controllers/user");
 const authenticateToken = require("./middlewares/authmiddleware");
 const app = express()
 const router = express.Router()
@@ -22,6 +24,10 @@ db.connect((err) => {
   console.log("Runn")
 router.post("/register" ,createUser)
 router.post("/login",authenticateToken,login)
+router.get('/verify-email',verifyEmail)
+router.post('/forgot-password',forgotPassword)
+router.post('/reset-password',resetPassword)
+
 app.listen(port, () => {
     console.log(`Example app listening on port ${port}`);
   });
